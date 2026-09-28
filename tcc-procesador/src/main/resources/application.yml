@@ -1,0 +1,39 @@
+# Procesador de estado. Toda la configuración llega por variables de entorno (12-factor):
+#   KAFKA_SERVIDORES, SPRING_DATASOURCE_URL, SPRING_DATASOURCE_USERNAME, SPRING_DATASOURCE_PASSWORD...
+# Para desarrollo local: perfil "local" (application-local.yml).
+spring:
+  application:
+    name: tcc-procesador
+  main:
+    web-application-type: none
+  threads:
+    virtual:
+      enabled: true
+  datasource:
+    hikari:
+      connection-timeout: 3000
+      maximum-pool-size: 30
+  jdbc:
+    template:
+      query-timeout: 5s
+
+kafka:
+  servidores: ""
+  topico-eventos-recibidos: guias.eventos.recibidos
+  topico-estados-cambiados: guias.estados.cambiados
+  topico-eventos-dlq: guias.eventos.dlq
+  tiempo-maximo-entrega-ms: 5000
+
+consumidor:
+  grupo-consumo: procesador-estado
+  hilos: 24
+  intentos-error-inesperado: 3
+  espera-minima-ms: 200
+  espera-maxima-ms: 30000
+
+procesador:
+  intervalo-relay: 250ms
+
+logging:
+  level:
+    org.apache.kafka: warn

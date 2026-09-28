@@ -1,0 +1,24 @@
+# Compilación
+target/
+*.class
+
+# IDE
+.idea/
+*.iml
+.vscode/
+.classpath
+.project
+.settings/
+
+# Sistema
+.DS_Store
+Thumbs.db
+
+# Secretos y entornos locales (nunca al repositorio)
+.env
+infra/aiven/.env
+infra/aiven/certificados/*
+!infra/aiven/certificados/LEEME.md
+
+# Resultados locales de carga
+pruebas-carga/resultados/*.local.*

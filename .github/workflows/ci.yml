@@ -1,0 +1,178 @@
+# Pipeline: calidad → seguridad → imágenes → humo → staging → producción (aprobación manual).
+# Misma cadena de controles que la versión .NET, con Maven en lugar de dotnet.
+name: ci
+
+on:
+  pull_request:
+  push:
+    branches: [main, develop]   # develop: calidad, seguridad, imágenes y humo; publicar y desplegar solo desde main
+  workflow_dispatch:
+
+# Un push nuevo a la misma rama cancela la ejecución anterior.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+# Mínimo privilegio: solo lectura por defecto; cada job pide lo que necesita.
+permissions:
+  contents: read
+
+env:
+  PUBLICAR: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+
+jobs:
+  calidad:
+    name: Compilación y pruebas
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+          cache: maven
+
+      # -Werror en el compilador (avisos = errores); incluye ArchUnit e integración con Testcontainers
+      # (el runner trae Docker).
+      - name: Compilar y probar
+        run: bash mvnw -B verify   # bash: el bit de ejecución se pierde al versionar desde Windows
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: resultados-pruebas
+          path: "**/target/surefire-reports/"
+
+  seguridad:
+    name: Dependencias y configuración
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Trivy · dependencias Maven con vulnerabilidades conocidas
+        uses: aquasecurity/trivy-action@v0.33.1
+        with:
+          scan-type: fs
+          scan-ref: .
+          scanners: vuln
+          severity: CRITICAL,HIGH
+          ignore-unfixed: true
+          exit-code: "1"
+
+      - name: Trivy · Dockerfile, Compose y secretos
+        uses: aquasecurity/trivy-action@v0.33.1
+        with:
+          scan-type: config
+          scan-ref: .
+          severity: CRITICAL,HIGH
+          exit-code: "1"
+
+  imagenes:
+    name: Imagen ${{ matrix.servicio }}
+    needs: [calidad, seguridad]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      packages: write   # solo este job puede publicar en GHCR
+    strategy:
+      matrix:
+        servicio: [tcc-api, tcc-procesador, tcc-notificador]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Construir
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          build-args: MODULO=${{ matrix.servicio }}
+          tags: ${{ matrix.servicio }}:ci
+          load: true
+          cache-from: type=gha,scope=${{ matrix.servicio }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.servicio }}
+
+      - name: Trivy · vulnerabilidades de la imagen
+        uses: aquasecurity/trivy-action@v0.33.1
+        with:
+          image-ref: ${{ matrix.servicio }}:ci
+          severity: CRITICAL,HIGH
+          ignore-unfixed: true
+          exit-code: "1"
+
+      - name: Guardar imagen para la prueba de humo
+        run: docker save ${{ matrix.servicio }}:ci | gzip > ${{ matrix.servicio }}.tar.gz
+      - uses: actions/upload-artifact@v4
+        with:
+          name: imagen-${{ matrix.servicio }}
+          path: ${{ matrix.servicio }}.tar.gz
+          retention-days: 3
+
+      - name: Publicar en GHCR (solo main)
+        if: env.PUBLICAR == 'true'
+        env:
+          REGISTRO: ghcr.io/${{ github.repository_owner }}
+        run: |
+          echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+          destino="${REGISTRO,,}/${{ matrix.servicio }}-java"
+          for etiqueta in "${{ github.sha }}" latest; do
+            docker tag "${{ matrix.servicio }}:ci" "$destino:$etiqueta"
+            docker push "$destino:$etiqueta"
+          done
+
+  humo:
+    name: Humo · sistema completo con las imágenes construidas
+    needs: imagenes
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: imagen-*
+          merge-multiple: true
+      - name: Cargar imágenes
+        run: for imagen in *.tar.gz; do gunzip -c "$imagen" | docker load; done
+
+      - name: Levantar infraestructura y aplicaciones
+        env:
+          IMAGEN_API: tcc-api:ci
+          IMAGEN_PROCESADOR: tcc-procesador:ci
+          IMAGEN_NOTIFICADOR: tcc-notificador:ci
+        run: docker compose -f infra/docker-compose.yml --profile aplicaciones up -d --no-build --wait-timeout 300 api procesador notificador
+
+      - name: Prueba de humo
+        run: API=http://localhost:8090 ./infra/pruebas/humo.sh
+
+      - name: Logs si falla
+        if: failure()
+        run: docker compose -f infra/docker-compose.yml --profile aplicaciones logs --tail 200
+
+  despliegue-staging:
+    name: Staging
+    needs: humo
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    environment: staging
+    steps:
+      # Sin clúster en esta prueba técnica: el paso real sería un "helm upgrade" con la imagen del commit.
+      - run: echo "helm upgrade --install tcc-eventos ./despliegue --set imagen.etiqueta=${{ github.sha }} (staging)"
+
+  despliegue-produccion:
+    name: Producción (canary)
+    needs: despliegue-staging
+    runs-on: ubuntu-24.04
+    environment: produccion   # regla de protección del entorno: aprobación manual obligatoria
+    steps:
+      - name: Congelamiento de temporada pico (15-nov a 10-ene)
+        env:
+          MENSAJE: ${{ github.event.head_commit.message }}
+        run: |
+          hoy=$((10#$(TZ=America/Bogota date +%m%d)))   # MMDD como número en base 10 (0110 no es octal)
+          if (( hoy >= 1115 || hoy <= 110 )) && [[ "$MENSAJE" != *"[hotfix]"* ]]; then
+            echo "::error::Despliegues congelados por temporada pico. Solo cambios marcados [hotfix] con aprobación."
+            exit 1
+          fi
+      - run: echo "Canary 10 % → 100 % con rollback automático por errores, lag o latencia (Argo Rollouts / Flagger)."

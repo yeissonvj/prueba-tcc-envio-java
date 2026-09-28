@@ -1,0 +1,9 @@
+# Desarrollo local contra la infraestructura de infra/docker-compose.yml (solo secretos locales).
+spring:
+  datasource:
+    url: jdbc:postgresql://127.0.0.1:5432/tcc_eventos
+    username: tcc
+    password: tcc_local
+
+kafka:
+  servidores: localhost:29092,localhost:29093,localhost:29094

@@ -1,0 +1,67 @@
+# API de ingesta y consulta. Configuración por variables de entorno (12-factor):
+#   KAFKA_SERVIDORES, SPRING_DATASOURCE_URL/USERNAME/PASSWORD, SPRING_DATA_REDIS_HOST/PASSWORD,
+#   SEGURIDAD_EMISOR, SEGURIDAD_DIRECCIONINTERNA...
+# Para desarrollo local: perfil "local" (application-local.yml).
+spring:
+  application:
+    name: tcc-api
+  threads:
+    virtual:
+      enabled: true
+  mvc:
+    problemdetails:
+      enabled: true
+  datasource:
+    hikari:
+      connection-timeout: 3000
+      maximum-pool-size: 20
+  jdbc:
+    template:
+      query-timeout: 5s
+  data:
+    redis:
+      timeout: 250ms
+      connect-timeout: 2s
+
+server:
+  port: 8080
+  shutdown: graceful
+  # Sin páginas de error con detalles internos.
+  error:
+    include-message: never
+    include-stacktrace: never
+
+kafka:
+  servidores: ""
+  topico-eventos-recibidos: guias.eventos.recibidos
+  tiempo-maximo-entrega-ms: 5000
+  circuito-minimo-envios: 10
+  circuito-ventana-segundos: 10
+  circuito-segundos-abierto: 15
+
+redis:
+  prefijo-clave: "tcc:eventos:recibidos:"
+  vigencia: 72h
+
+seguridad:
+  emisor: ""
+  audiencia: api-ingesta
+  origenes-por-cliente:
+    tms: [TMS]
+    transporte: [TRANSPORTE]
+  peticiones-por-segundo-por-cliente: 1000
+  rafaga-por-cliente: 2000
+
+api:
+  intervalo-relay-contingencia: 5s
+
+# Exponer la documentación en producción es entregar el mapa de la API: solo en el perfil local.
+springdoc:
+  api-docs:
+    enabled: false
+  swagger-ui:
+    enabled: false
+
+logging:
+  level:
+    org.apache.kafka: warn
