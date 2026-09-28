@@ -145,7 +145,7 @@ Dockerfile                una imagen distroless por servicio (ARG MODULO) con el
 db/migraciones/           SQL versionado (Flyway), el mismo de la versión .NET
 infra/                    docker-compose, Kafka, Keycloak, observabilidad, prueba de humo
 pruebas-carga/            k6 y reconciliación (resultados/dotnet: mediciones de la versión .NET)
-.github/                  pipeline (GitHub Actions) y Dependabot
+.github/                  pipeline (GitHub Actions)
 docs/                     versión Java, arquitectura, ADR, operación, pruebas, liderazgo, visión, IA
 ```
 
