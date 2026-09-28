@@ -1,0 +1,10 @@
+**/target/
+.git/
+.idea/
+.vscode/
+docs/
+infra/
+pruebas-carga/
+herramientas/
+db/
+*.md

@@ -1,0 +1,3 @@
+corrida=PANEL0928162003
+aceptados=882
+no_aceptados=250

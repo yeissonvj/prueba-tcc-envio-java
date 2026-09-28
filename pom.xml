@@ -1,0 +1,143 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Proyecto padre: versiones, plugins y compuertas de calidad.
+  Las dependencias entre módulos SON la arquitectura hexagonal: si el dominio no tiene Spring
+  en su classpath, no puede usarlo aunque alguien quiera (ArchUnit lo verifica además).
+-->
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>org.springframework.boot</groupId>
+        <artifactId>spring-boot-starter-parent</artifactId>
+        <version>4.1.1</version>
+        <relativePath/>
+    </parent>
+
+    <groupId>co.tcc.eventos</groupId>
+    <artifactId>tcc-eventos</artifactId>
+    <version>1.0.0-SNAPSHOT</version>
+    <packaging>pom</packaging>
+    <name>TCC · Plataforma de eventos de guías</name>
+
+    <modules>
+        <module>tcc-dominio</module>
+        <module>tcc-contratos</module>
+        <module>tcc-aplicacion</module>
+        <module>tcc-infraestructura</module>
+        <module>tcc-api</module>
+        <module>tcc-procesador</module>
+        <module>tcc-notificador</module>
+        <module>tcc-arquitectura-pruebas</module>
+    </modules>
+
+    <properties>
+        <java.version>21</java.version>
+        <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+        <resilience4j.version>2.4.0</resilience4j.version>
+        <bucket4j.version>8.20.0</bucket4j.version>
+        <archunit.version>1.5.1</archunit.version>
+        <springdoc.version>3.1.1</springdoc.version>
+        <!-- Ruta de las migraciones compartidas con la versión .NET (ADR-0007). -->
+        <migraciones.dir>${maven.multiModuleProjectDirectory}/db/migraciones</migraciones.dir>
+    </properties>
+
+    <dependencyManagement>
+        <dependencies>
+            <dependency>
+                <groupId>co.tcc.eventos</groupId>
+                <artifactId>tcc-dominio</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>co.tcc.eventos</groupId>
+                <artifactId>tcc-contratos</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>co.tcc.eventos</groupId>
+                <artifactId>tcc-aplicacion</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>co.tcc.eventos</groupId>
+                <artifactId>tcc-infraestructura</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>co.tcc.eventos</groupId>
+                <artifactId>tcc-api</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>co.tcc.eventos</groupId>
+                <artifactId>tcc-procesador</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>co.tcc.eventos</groupId>
+                <artifactId>tcc-notificador</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>io.github.resilience4j</groupId>
+                <artifactId>resilience4j-circuitbreaker</artifactId>
+                <version>${resilience4j.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.bucket4j</groupId>
+                <artifactId>bucket4j_jdk17-core</artifactId>
+                <version>${bucket4j.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.tngtech.archunit</groupId>
+                <artifactId>archunit-junit5</artifactId>
+                <version>${archunit.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.springdoc</groupId>
+                <artifactId>springdoc-openapi-starter-webmvc-ui</artifactId>
+                <version>${springdoc.version}</version>
+            </dependency>
+        </dependencies>
+    </dependencyManagement>
+
+    <build>
+        <pluginManagement>
+            <plugins>
+                <plugin>
+                    <groupId>org.apache.maven.plugins</groupId>
+                    <artifactId>maven-compiler-plugin</artifactId>
+                    <configuration>
+                        <release>${java.version}</release>
+                        <parameters>true</parameters>
+                        <!-- Avisos como errores: el equivalente a -warnaserror de la versión .NET.
+                             Sin "try": try (var alcance = contexto.makeCurrent()) es el patrón de OpenTelemetry
+                             y en Java 21 aún no existe la variable anónima "_" fuera de preview. -->
+                        <compilerArgs>
+                            <arg>-Xlint:all,-processing,-serial,-try</arg>
+                            <arg>-Werror</arg>
+                        </compilerArgs>
+                    </configuration>
+                </plugin>
+                <plugin>
+                    <groupId>org.apache.maven.plugins</groupId>
+                    <artifactId>maven-surefire-plugin</artifactId>
+                    <configuration>
+                        <!-- Mismos nombres que en .NET: las clases de prueba terminan en "Pruebas". -->
+                        <includes>
+                            <include>**/*Pruebas.java</include>
+                        </includes>
+                        <systemPropertyVariables>
+                            <migraciones.dir>${migraciones.dir}</migraciones.dir>
+                        </systemPropertyVariables>
+                        <!-- Mockito/ByteBuddy no se usan (falsos a mano); silencia el aviso de agentes dinámicos. -->
+                        <argLine>-XX:+EnableDynamicAgentLoading</argLine>
+                    </configuration>
+                </plugin>
+            </plugins>
+        </pluginManagement>
+    </build>
+</project>

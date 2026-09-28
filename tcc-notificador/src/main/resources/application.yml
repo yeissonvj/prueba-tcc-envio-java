@@ -1,0 +1,51 @@
+# Notificador. Configuración por variables de entorno (KAFKA_SERVIDORES, SPRING_DATASOURCE_URL,
+# PROVEEDORES_SMS_CAIDO, NOTIFICADOR_REINTENTOS_0_ESPERA...). Desarrollo local: perfil "local".
+spring:
+  application:
+    name: tcc-notificador
+  main:
+    web-application-type: none
+  threads:
+    virtual:
+      enabled: true
+  datasource:
+    hikari:
+      connection-timeout: 3000
+      maximum-pool-size: 30
+  jdbc:
+    template:
+      query-timeout: 5s
+
+kafka:
+  servidores: ""
+  topico-estados-cambiados: guias.estados.cambiados
+  tiempo-maximo-entrega-ms: 5000
+
+notificador:
+  grupo-consumo: notificador
+  topico-dlq: notificaciones.dlq
+  hilos: 24
+  reintentos:
+    - topico: notificaciones.reintento.1m
+      espera: 1m
+    - topico: notificaciones.reintento.10m
+      espera: 10m
+    - topico: notificaciones.reintento.1h
+      espera: 1h
+
+proveedores:
+  sms:
+    caido: false
+    tasa-fallas: 0
+    latencia-ms: 30
+  correo:
+    caido: false
+    tasa-fallas: 0
+    latencia-ms: 50
+  circuito-minimo-envios: 10
+  circuito-ventana-segundos: 30
+  circuito-segundos-abierto: 30
+
+logging:
+  level:
+    org.apache.kafka: warn
